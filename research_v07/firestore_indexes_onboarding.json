@@ -1,0 +1,51 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hasPublicProfile",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "research_papers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "uploadedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "research_papers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

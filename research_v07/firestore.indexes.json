@@ -1,0 +1,33 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "papers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "papers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "authorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

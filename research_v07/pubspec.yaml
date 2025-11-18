@@ -1,0 +1,89 @@
+name: research_p
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Firebase dependencies
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  firebase_storage: ^12.3.4
+  firebase_messaging: ^15.1.3
+  
+  # Google Sign-In
+  google_sign_in: ^6.1.5
+  
+  # Local implementation dependencies
+  flutter_riverpod: ^2.5.1
+  provider: ^6.1.2  # For existing widgets that use Provider
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+  flutter_local_notifications: ^17.2.1+2
+  file_picker: ^8.0.7
+  image_picker: ^1.1.2
+  shared_preferences: ^2.2.2
+  google_fonts: ^5.1.0
+  url_launcher: ^6.2.5
+
+  # Core dependencies
+  path_provider: ^2.1.2
+  share_plus: ^10.0.0
+  http: ^1.2.0
+  path: ^1.8.0
+  logging: ^1.2.0
+  intl: ^0.19.0
+  async: ^2.12.0  # Using SDK compatible version
+  crypto: ^3.0.3  # For password hashing
+  timeago: ^3.7.0  # For relative time formatting
+  
+  # PDF Viewer - Using pdfrx for unified viewing
+  pdfrx: ^1.3.5  # Latest stable unified PDF viewer
+  permission_handler: ^11.3.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  logger: ^2.6.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  fake_async: ^1.3.2
+  leak_tracker: ^11.0.1
+  vm_service: 14.3.1  # Keep pinned version for SDK compatibility
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.8
+  freezed: ^2.5.2
+  json_serializable: ^6.8.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/faculty/
+    - assets/images/defaults/
+    - assets/images/
+    - assets/images/defaults/profile.png
+    - assets/images/background/welcome_bg.png
+    - assets/images/logo/logo.png
+    - assets/images/icons/google.png
+    # PDF Papers - Each professor's folder must be explicitly declared
+    - assets/papers/ProfessorDrSheakRashedHaiderNoori/
+    - assets/papers/Professor_Dr_Md_FokhrayHossain/
+    - assets/papers/Dr_S_M_Aminul_Haque/
+    - assets/papers/Ms._Nazmun_Nessa_Moon/
+    - assets/papers/Dr_Shaikh_Muhammad_Allayear/
+    - assets/papers/Dr_A_H_M_SaifullahSadi/
+    - assets/papers/DrImran_Mahmud/
+    - assets/papers/Dr_Md._Sarowar_Hossain/
+    - assets/papers/ProfessorDrSheakRashedHaiderNoori/
+    - assets/papers/Professor_Dr_Md_FokhrayHossain/
+
+
+
+

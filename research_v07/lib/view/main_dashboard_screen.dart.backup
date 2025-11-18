@@ -1,0 +1,1886 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../widgets/app_drawer.dart';
+import '../data/faculty_data.dart';
+import '../screens/faculty_profile_screen.dart';
+import '../services/ui_integration_service.dart';
+import '../common_widgets/logo_ui.dart';
+import '../common_widgets/safe_image.dart';
+import '../models/research_paper.dart';
+import '../screens/universal_pdf_viewer.dart';
+import 'dart:async';
+import '../models/faculty.dart';
+import 'package:provider/provider.dart';
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
+import '../navigation/bottom_nav_controller.dart';
+
+class MainDashboardScreen extends StatefulWidget {
+  const MainDashboardScreen({super.key});
+
+  @override
+  State<MainDashboardScreen> createState() => _MainDashboardScreenState();
+}
+
+class _MainDashboardScreenState extends State<MainDashboardScreen> {
+  final UIIntegrationService _uiService = UIIntegrationService();
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  List<ResearchPaper> _searchResults = [];
+  List<String> _searchSuggestions = [];
+  bool _isSearching = false;
+  bool _showSearchOverlay = false;
+  Timer? _searchDebouncer;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    try {
+      await _uiService.initializeServices();
+      setState(() {});
+    } catch (e) {
+      debugPrint('Error initializing services: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    _searchDebouncer?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebouncer?.cancel();
+    _searchDebouncer = Timer(const Duration(milliseconds: 200), () {
+      if (query.isNotEmpty) {
+        setState(() {
+          _isSearching = true;
+          _showSearchOverlay = true;
+        });
+        _performSearch(query);
+        _generateSearchSuggestions(query);
+      } else {
+        setState(() {
+          _showSearchOverlay = false;
+          _searchResults.clear();
+          _searchSuggestions.clear();
+        });
+      }
+    });
+  }
+
+  void _generateSearchSuggestions(String query) {
+    final allPapers = <ResearchPaper>[];
+    facultyResearchPapers.forEach((_, papers) => allPapers.addAll(papers));
+
+    final suggestions = <String>{};
+
+    // Add paper titles that contain the query
+    for (final paper in allPapers) {
+      if (paper.title.toLowerCase().contains(query.toLowerCase())) {
+        suggestions.add(paper.title);
+      }
+      if (paper.author.toLowerCase().contains(query.toLowerCase())) {
+        suggestions.add(paper.author);
+      }
+      for (final keyword in paper.keywords) {
+        if (keyword.toLowerCase().contains(query.toLowerCase())) {
+          suggestions.add(keyword);
+        }
+      }
+    }
+
+    // Add faculty names
+    for (final faculty in facultyMembers) {
+      if (faculty.name.toLowerCase().contains(query.toLowerCase())) {
+        suggestions.add(faculty.name);
+      }
+    }
+
+    setState(() {
+      _searchSuggestions = suggestions.take(5).toList();
+    });
+  }
+
+  void _performSearch(String query) async {
+    try {
+      final results = _uiService.performSimpleSearch(query);
+
+      // Track the search
+      await _uiService.trackSearch(query, 'current_user', results.length);
+
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isSearching = false;
+      });
+      debugPrint('Search error: $e');
+    }
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _showSearchOverlay = false;
+      _searchResults.clear();
+      _searchSuggestions.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, _) {
+        return Scaffold(
+          backgroundColor: AppTheme.backgroundColor(context),
+          drawer:
+              AppDrawer(onThemeToggle: (isDark) => themeProvider.toggleTheme()),
+          body: Stack(
+            children: [
+              NestedScrollView(
+                controller: _scrollController,
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    _buildSliverAppBar(context),
+                  ];
+                },
+                body: _buildDashboardTab(),
+              ),
+              if (_showSearchOverlay) _buildSearchOverlay(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSliverAppBar(BuildContext context) {
+    return SliverAppBar(
+      expandedHeight: 220,
+      floating: false,
+      pinned: true,
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.primaryBlue,
+                AppTheme.primaryPurple,
+                AppTheme.accentOrange.withOpacity(0.8),
+              ],
+            ),
+          ),
+          child: Stack(
+            children: [
+              // Floating circles background
+              Positioned(
+                top: 30,
+                right: 20,
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.1),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 80,
+                left: 30,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.accentPink.withOpacity(0.2),
+                  ),
+                ),
+              ),
+              // Main content
+              SafeArea(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 70),
+                    // Logo with glow effect
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const ResearchHubLogo(
+                          fontSize: 28, showTagline: false),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildSearchBar(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(60),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.2),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          // Outer shadow for depth
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+            spreadRadius: 2,
+          ),
+          // Inner glow effect
+          BoxShadow(
+            color: AppTheme.primaryBlue.withOpacity(0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        elevation: 0,
+        borderRadius: BorderRadius.circular(28),
+        color: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.2),
+                Colors.white.withOpacity(0.1),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            onTap: () => setState(() => _showSearchOverlay = true),
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlignVertical: TextAlignVertical.center,
+            decoration: InputDecoration(
+              hintText: 'Search research papers, authors, keywords...',
+              hintStyle: GoogleFonts.poppins(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+              ),
+              prefixIcon: Container(
+                margin: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryBlue.withOpacity(0.8),
+                      AppTheme.primaryPurple.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primaryBlue.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.search_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? Container(
+                      margin: const EdgeInsets.all(10),
+                      child: IconButton(
+                        icon: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.accentOrange,
+                                AppTheme.accentPink
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accentOrange.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.clear_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                        onPressed: _clearSearch,
+                      ),
+                    )
+                  : Container(
+                      margin: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Icon(
+                        Icons.tune_rounded,
+                        color: Colors.white.withOpacity(0.7),
+                        size: 18,
+                      ),
+                    ),
+              filled: true,
+              fillColor: Colors.transparent,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide(
+                  color: Colors.white.withOpacity(0.5),
+                  width: 2,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchOverlay() {
+    return Positioned(
+      top: 200,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        color: AppTheme.backgroundColor(context),
+        child: Column(
+          children: [
+            // Search Suggestions (if available and not showing results)
+            if (_searchSuggestions.isNotEmpty &&
+                _searchResults.isEmpty &&
+                !_isSearching)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor(context),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline_rounded,
+                          size: 20,
+                          color: AppTheme.primaryBlue,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Suggestions',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textColor(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _searchSuggestions
+                          .map((suggestion) => _buildSuggestionChip(suggestion))
+                          .toList(),
+                    ),
+                  ],
+                ),
+              ),
+            // Search Results Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceColor(context),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: AppTheme.primaryBlue,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _searchResults.isEmpty && !_isSearching
+                        ? 'Search Results'
+                        : 'Results (${_searchResults.length})',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textColor(context),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_isSearching)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryBlue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppTheme.primaryBlue,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Search Results
+            Expanded(
+              child: _searchResults.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryBlue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(50),
+                            ),
+                            child: Icon(
+                              _searchController.text.isEmpty
+                                  ? Icons.search_rounded
+                                  : Icons.search_off_rounded,
+                              size: 48,
+                              color: AppTheme.primaryBlue.withOpacity(0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            _searchController.text.isEmpty
+                                ? 'Start typing to search...'
+                                : 'No results found',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.secondaryTextColor(context),
+                            ),
+                          ),
+                          if (_searchController.text.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Try different keywords or check spelling',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: AppTheme.secondaryTextColor(context),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) {
+                        final paper = _searchResults[index];
+                        return _buildSearchResultCard(paper);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchResultCard(ResearchPaper paper) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.description,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        title: Text(
+          paper.title,
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              paper.author,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.secondaryTextColor(context),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.date_range,
+                    size: 14, color: AppTheme.secondaryTextColor(context)),
+                const SizedBox(width: 4),
+                Text(
+                  paper.year,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.secondaryTextColor(context),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Icon(Icons.format_quote,
+                    size: 14, color: AppTheme.secondaryTextColor(context)),
+                const SizedBox(width: 4),
+                Text(
+                  '${paper.citations} citations',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.secondaryTextColor(context),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: () => _openPaper(paper),
+      ),
+    );
+  }
+
+  Widget _buildDashboardTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildWelcomeSection(),
+          const SizedBox(height: 24),
+          _buildQuickStatsSection(),
+          const SizedBox(height: 24),
+          _buildFeaturedPapersSection(),
+          const SizedBox(height: 24),
+          _buildRecommendationsSection(),
+        ],
+      ),
+    );
+  }
+
+  // Note: Explore and Analytics tabs have been moved to dedicated screens in the BottomNavController
+
+  Widget _buildWelcomeSection() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.primaryBlue.withOpacity(0.1),
+            AppTheme.primaryPurple.withOpacity(0.1),
+            AppTheme.accentOrange.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.primaryBlue.withOpacity(0.2),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryBlue.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Icon section
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              gradient: AppTheme.primaryGradientWidget,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryBlue.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.celebration,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 20),
+          // Text section
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome to Research Hub',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textColor(context),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Discover and explore cutting-edge research papers with AI-powered insights',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    color: AppTheme.secondaryTextColor(context),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickStatsSection() {
+    final allPapers = <ResearchPaper>[];
+    facultyResearchPapers.forEach((_, papers) => allPapers.addAll(papers));
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.surfaceColor(context),
+            AppTheme.surfaceColor(context).withOpacity(0.8),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.primaryBlue.withOpacity(0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppTheme.primaryBlue, AppTheme.primaryPurple],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.dashboard_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Quick Stats',
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textColor(context),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard('Research Papers', '${allPapers.length}',
+                    Icons.article_rounded),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildStatCard('Faculty Members',
+                    '${facultyMembers.length}', Icons.people_rounded),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildStatCard(
+                    'Total Views', '1.2K+', Icons.visibility_rounded),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon) {
+    final List<List<Color>> gradients = [
+      [AppTheme.primaryBlue, AppTheme.primaryPurple],
+      [AppTheme.accentOrange, AppTheme.accentPink],
+      [AppTheme.accentGreen, AppTheme.primaryBlue],
+      [AppTheme.primaryPurple, AppTheme.accentPink],
+    ];
+
+    final gradientIndex =
+        [title, value, icon.toString()].join().hashCode % gradients.length;
+    final selectedGradient = gradients[gradientIndex.abs()];
+
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 600),
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.9 + (value * 0.1),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            // Add haptic feedback
+            HapticFeedback.lightImpact();
+            // Add bounce animation on tap
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$title: $value'),
+                duration: const Duration(seconds: 1),
+                backgroundColor: selectedGradient[0],
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: selectedGradient,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: selectedGradient[0].withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: selectedGradient[1].withOpacity(0.3),
+                  blurRadius: 25,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.25),
+                    Colors.white.withOpacity(0.1),
+                  ],
+                ),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 36,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      value,
+                      style: GoogleFonts.poppins(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.3),
+                            offset: const Offset(0, 2),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withOpacity(0.95),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeaturedPapersSection() {
+    final allPapers = <ResearchPaper>[];
+    facultyResearchPapers.forEach((_, papers) => allPapers.addAll(papers));
+    final featuredPapers = allPapers.take(3).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.primaryBlue.withOpacity(0.1),
+                AppTheme.primaryPurple.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppTheme.primaryBlue.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primaryBlue,
+                            AppTheme.primaryPurple
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.stars_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        'Featured Research',
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textColor(context),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        softWrap: false,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 120),
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppTheme.accentOrange, AppTheme.accentPink],
+                    ),
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.accentOrange.withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(23),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        // Navigate to explore screen in the bottom navigation
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => BottomNavController(),
+                          ),
+                        );
+                      },
+                      child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(23),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.1),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'View All Papers',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        ...featuredPapers.map((paper) => _buildPaperCard(paper)),
+      ],
+    );
+  }
+
+  Widget _buildRecommendationsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.accentGreen.withOpacity(0.1),
+                AppTheme.primaryBlue.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppTheme.accentGreen.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppTheme.accentGreen, AppTheme.primaryBlue],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.recommend_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Recommendations',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textColor(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _uiService.buildRecommendationWidget(
+          userId: 'current_user',
+          onPaperTap: _openPaper,
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildTopAuthorsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.accentOrange.withOpacity(0.1),
+                AppTheme.accentPink.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppTheme.accentOrange.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppTheme.accentOrange, AppTheme.accentPink],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.school_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Top Researchers',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textColor(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...facultyMembers.take(5).map((faculty) => _buildAuthorCard(faculty)),
+      ],
+    );
+  }
+
+  Widget _buildAuthorCard(Faculty faculty) {
+    final paperCount = facultyResearchPapers[faculty.name]?.length ?? 0;
+    final List<List<Color>> gradients = [
+      [AppTheme.primaryBlue, AppTheme.primaryPurple],
+      [AppTheme.accentOrange, AppTheme.accentPink],
+      [AppTheme.accentGreen, AppTheme.primaryBlue],
+      [AppTheme.primaryPurple, AppTheme.accentPink],
+    ];
+
+    final gradientIndex = faculty.name.hashCode % gradients.length;
+    final selectedGradient = gradients[gradientIndex.abs()];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            selectedGradient[0].withOpacity(0.05),
+            selectedGradient[1].withOpacity(0.02),
+          ],
+        ),
+        border: Border.all(
+          color: selectedGradient[0].withOpacity(0.2),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: selectedGradient[0].withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FacultyProfileScreen(faculty: faculty),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: selectedGradient,
+                    ),
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: selectedGradient[0].withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: SafeCircleAvatar(
+                    radius: 25,
+                    imagePath: faculty.imageUrl,
+                    backgroundColor: Colors.transparent,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        faculty.name,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textColor(context),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        faculty.designation,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: AppTheme.secondaryTextColor(context),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              selectedGradient[0].withOpacity(0.2),
+                              selectedGradient[1].withOpacity(0.2),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$paperCount publications',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: selectedGradient[0],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: selectedGradient[0].withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                    color: selectedGradient[0],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoriesSection() {
+    final categories = _uiService.getTopicDistribution();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.primaryPurple.withOpacity(0.1),
+                AppTheme.accentPink.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppTheme.primaryPurple.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppTheme.primaryPurple, AppTheme.accentPink],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.category_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Research Categories',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textColor(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 1.5,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: categories.length.clamp(0, 6),
+          itemBuilder: (context, index) {
+            final entry = categories.entries.elementAt(index);
+            return _buildCategoryCard(entry.key, entry.value, index);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoryCard(String category, double percentage, int index) {
+    final List<List<Color>> gradients = [
+      [AppTheme.primaryBlue, AppTheme.primaryPurple],
+      [AppTheme.accentOrange, AppTheme.accentPink],
+      [AppTheme.accentGreen, AppTheme.primaryBlue],
+      [AppTheme.primaryPurple, AppTheme.accentPink],
+      [AppTheme.accentOrange, AppTheme.accentGreen],
+      [AppTheme.primaryBlue, AppTheme.accentGreen],
+    ];
+
+    final selectedGradient = gradients[index % gradients.length];
+
+    final List<IconData> categoryIcons = [
+      Icons.computer_rounded,
+      Icons.science_rounded,
+      Icons.biotech_rounded,
+      Icons.psychology_rounded,
+      Icons.analytics_rounded,
+      Icons.insights_rounded,
+    ];
+
+    final icon = categoryIcons[index % categoryIcons.length];
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: selectedGradient,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: selectedGradient[0].withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            _searchController.text = category;
+            _performSearch(category);
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(0.2),
+                  Colors.white.withOpacity(0.1),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    category,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${(percentage * 100).toStringAsFixed(1)}%',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Unused method
+  /*Widget _buildUsageInsightsSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Usage Insights',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textColor(context),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildInsightItem('Views Today', '156', Icons.visibility),
+                _buildInsightItem('Downloads', '42', Icons.download),
+                _buildInsightItem('Searches', '89', Icons.search),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }*/
+
+  Widget _buildInsightItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 24, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textColor(context),
+          ),
+        ),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: AppTheme.secondaryTextColor(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaperCard(ResearchPaper paper) {
+    final List<List<Color>> gradients = [
+      [AppTheme.primaryBlue, AppTheme.primaryPurple],
+      [AppTheme.accentOrange, AppTheme.accentPink],
+      [AppTheme.accentGreen, AppTheme.primaryBlue],
+      [AppTheme.primaryPurple, AppTheme.accentPink],
+      [AppTheme.accentOrange, AppTheme.accentGreen],
+    ];
+
+    final gradientIndex = paper.title.hashCode % gradients.length;
+    final selectedGradient = gradients[gradientIndex.abs()];
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            selectedGradient[0].withOpacity(0.08),
+            selectedGradient[1].withOpacity(0.04),
+          ],
+        ),
+        border: Border.all(
+          color: selectedGradient[0].withOpacity(0.2),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: selectedGradient[0].withOpacity(0.15),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            _openPaper(paper);
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Hero(
+                  tag: 'paper_${paper.id}',
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: selectedGradient,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: selectedGradient[0].withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.article_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Tooltip(
+                        message: paper.title,
+                        preferBelow: false,
+                        child: Text(
+                          paper.title,
+                          style: GoogleFonts.poppins(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textColor(context),
+                            height: 1.4,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    selectedGradient[0].withOpacity(0.15),
+                                    selectedGradient[1].withOpacity(0.15),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: selectedGradient[0].withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.person_rounded,
+                                    size: 14,
+                                    color: selectedGradient[0],
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      paper.author,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: selectedGradient[0],
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: selectedGradient[1].withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              paper.year,
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: selectedGradient[1],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        selectedGradient[0].withOpacity(0.1),
+                        selectedGradient[1].withOpacity(0.1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selectedGradient[0].withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 18,
+                    color: selectedGradient[0],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionChip(String suggestion) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _searchController.text = suggestion;
+          _performSearch(suggestion);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.primaryBlue.withOpacity(0.1),
+                AppTheme.primaryPurple.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: AppTheme.primaryBlue.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 14,
+                color: AppTheme.primaryBlue,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  suggestion,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.primaryBlue,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openPaper(ResearchPaper paper) async {
+    // Track the view
+    await _uiService.trackPaperView(paper.id, 'current_user');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UniversalPdfViewer(
+          pdfPath: paper.pdfUrl,
+          title: paper.title,
+          author: paper.author,
+          isAsset: true,
+        ),
+      ),
+    );
+  }
+}
