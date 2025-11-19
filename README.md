@@ -39,12 +39,7 @@ flutter run
 - Inference: app uses precomputed embeddings and lightweight clustering or a small on-device model / server API depending on deployment.  
 - Goals: improve discovery, surface related work, and enable category-based navigation.
 
-Contributing: open issues or PRs; see code and docs in the repo.  
 
-License: MIT (or add your preferred license).
-# research_v07
-
-A new Flutter project.
 
 ## Getting Started
 
